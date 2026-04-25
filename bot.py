@@ -72,33 +72,68 @@ def create_jap_order(link):
         log(f"❌ Ошибка заказа: {e}")
 
 def fetch_reels():
-    target_url = f"https://www.facebook.com/{FB_PAGE_ID}/reels"
-    scraper_url = f"http://api.scraperapi.com/?api_key={SCRAPER_API_KEY}&url={requests.utils.quote(target_url)}&render=true&country_code=us"
-    log("🔄 ScraperAPI запрос...")
-    try:
-        resp = requests.get(scraper_url, timeout=60)
-        log(f"📥 Status: {resp.status_code} | HTML: {len(resp.text)} символов")
-        html = resp.text
+    # Пробуем несколько вариантов URL
+    urls_to_try = [
+        f"https://m.facebook.com/{FB_PAGE_ID}/reels",
+        f"https://www.facebook.com/{FB_PAGE_ID}/reels",
+        f"https://m.facebook.com/profile.php?id={FB_PAGE_ID}&sk=reels",
+    ]
 
-        urls = set()
+    for target_url in urls_to_try:
+        scraper_url = (
+            f"http://api.scraperapi.com/"
+            f"?api_key={SCRAPER_API_KEY}"
+            f"&url={requests.utils.quote(target_url)}"
+            f"&render=true"
+            f"&country_code=us"
+            f"&premium=true"
+            f"&device_type=mobile"
+        )
+        log(f"🔄 ScraperAPI запрос: {target_url}")
+        try:
+            resp = requests.get(scraper_url, timeout=90)
+            log(f"📥 Status: {resp.status_code} | HTML: {len(resp.text)} символов")
 
-        # Паттерн 1: прямые ссылки на Reels
-        for match in re.finditer(r'https://www\.facebook\.com/reel/(\d+)', html):
-            urls.add(f"https://www.facebook.com/reel/{match.group(1)}")
+            if resp.status_code != 200:
+                log(f"⚠️  Ответ: {resp.text[:300]}")
+                continue
 
-        # Паттерн 2: video_id в JSON
-        for match in re.finditer(r'"video_id":"(\d{10,})"', html):
-            urls.add(f"https://www.facebook.com/watch/?v={match.group(1)}")
+            html = resp.text
 
-        # Паттерн 3: /videos/ ссылки
-        for match in re.finditer(r'href="(/[^"]+/videos/(\d+)[^"]*)"', html):
-            urls.add(f"https://www.facebook.com{match.group(1)}")
+            urls = set()
 
-        log(f"🎬 Найдено Reels: {len(urls)}")
-        return list(urls)
-    except Exception as e:
-        log(f"❌ Ошибка ScraperAPI: {e}")
-        return []
+            # Паттерн 1: прямые ссылки на Reels
+            for match in re.finditer(r'https://www\.facebook\.com/reel/(\d+)', html):
+                urls.add(f"https://www.facebook.com/reel/{match.group(1)}")
+
+            # Паттерн 2: мобильные ссылки на Reels
+            for match in re.finditer(r'https://m\.facebook\.com/reel/(\d+)', html):
+                urls.add(f"https://www.facebook.com/reel/{match.group(1)}")
+
+            # Паттерн 3: video_id в JSON
+            for match in re.finditer(r'"video_id":"(\d{10,})"', html):
+                urls.add(f"https://www.facebook.com/watch/?v={match.group(1)}")
+
+            # Паттерн 4: /videos/ ссылки
+            for match in re.finditer(r'href="(/[^"]+/videos/(\d+)[^"]*)"', html):
+                urls.add(f"https://www.facebook.com{match.group(1)}")
+
+            # Паттерн 5: reel в href
+            for match in re.finditer(r'href="[^"]*(/reel/(\d+))[^"]*"', html):
+                urls.add(f"https://www.facebook.com/reel/{match.group(2)}")
+
+            log(f"🎬 Найдено Reels: {len(urls)}")
+
+            if len(urls) > 0:
+                return list(urls)
+
+            # Если 0 — логируем HTML для диагностики
+            log(f"⚠️  0 Reels. HTML начало: {html[:500]}")
+
+        except Exception as e:
+            log(f"❌ Ошибка ScraperAPI: {e}")
+
+    return []
 
 def main():
     log("🚀 Facebook Reels бот запущен!")
