@@ -103,6 +103,16 @@ def fetch_reels():
 
             html = resp.content.decode("utf-8", errors="ignore")
 
+            # Дебаг: логируем фрагменты HTML для диагностики (только первый URL)
+            if target_url == urls_to_try[0]:
+                log(f"🔍 HTML начало: {html[:500]}")
+                # Ищем любые упоминания reel/video
+                reel_mentions = [m.start() for m in re.finditer(r'reel|video|watch', html, re.IGNORECASE)]
+                log(f"🔍 Найдено слов reel/video/watch: {len(reel_mentions)}")
+                if reel_mentions:
+                    pos = reel_mentions[0]
+                    log(f"🔍 Контекст первого совпадения: ...{html[max(0,pos-50):pos+100]}...")
+
             # Паттерн 1: /reel/ID
             for match in re.finditer(r'/reel/(\d{10,})', html):
                 all_urls.add(f"https://www.facebook.com/reel/{match.group(1)}")
