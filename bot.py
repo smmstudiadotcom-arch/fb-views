@@ -12,18 +12,28 @@ JAP_API_KEY = "ec2fb6c8f5a4ea7ba6cf532e87a09895"
 JAP_API_URL = "https://justanotherpanel.com/api/v2"
 
 # ══════════════════════════════════════
-#  SCRAPERAPI
-# ══════════════════════════════════════
-SCRAPER_API_KEY = os.environ.get("SCRAPER_API_KEY", "9d538a4836e83b0ff52157ccfe3aca8b")
-
-# ══════════════════════════════════════
-#  FACEBOOK REELS
+#  FACEBOOK REELS (cookies)
 # ══════════════════════════════════════
 FB_PAGE_ID     = "100081997113052"
 FB_SERVICE     = 9604
 FB_QTY_MIN     = 500
 FB_QTY_MAX     = 1000
 CHECK_INTERVAL = 3600  # каждый час
+
+C_USER = os.environ.get("FB_C_USER", "61553351803414")
+XS     = os.environ.get("FB_XS",     "8%3AeGYkn8717BMe-g%3A2%3A1774503965%3A-1%3A-1%3A%3AAcw0XpXFaM1nyL4JOlFdYs_Ud6Y079Nz9FGx2eBrLs8")
+DATR   = os.environ.get("FB_DATR",   "gvGqaR00HB8BBQCtWvA_ZrBw")
+FR     = os.environ.get("FB_FR",     "1fXp7RjNu6E4tlLeA.AWc5dZieQn71hppDlUvFZLqzKA5QYrGNQzKXlgvHvbeVm7zLhgs.Bp6coy..AAA.0.0.Bp6coy.AWeEM5yj4-p0pnZr32HrLye4l9I")
+SB     = os.environ.get("FB_SB",     "hfGqaZIWmBX2PQV9iqh9Tr1V")
+
+FB_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+    "Cookie": f"c_user={C_USER}; xs={XS}; datr={DATR}; fr={FR}; sb={SB}; ps_l=1; ps_n=1",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+    "Accept-Encoding": "identity",
+    "Referer": "https://m.facebook.com/",
+}
 
 # Хранение обработанных Reels
 STATE_FILE = "processed_reels.txt"
@@ -72,68 +82,54 @@ def create_jap_order(link):
         log(f"❌ Ошибка заказа: {e}")
 
 def fetch_reels():
-    # Пробуем несколько вариантов URL
+    # Пробуем несколько URL для поиска Reels
     urls_to_try = [
         f"https://m.facebook.com/{FB_PAGE_ID}/reels",
-        f"https://www.facebook.com/{FB_PAGE_ID}/reels",
         f"https://m.facebook.com/profile.php?id={FB_PAGE_ID}&sk=reels",
+        f"https://m.facebook.com/profile.php?id={FB_PAGE_ID}",
     ]
 
+    all_urls = set()
+
     for target_url in urls_to_try:
-        scraper_url = (
-            f"http://api.scraperapi.com/"
-            f"?api_key={SCRAPER_API_KEY}"
-            f"&url={requests.utils.quote(target_url)}"
-            f"&render=true"
-            f"&country_code=us"
-            f"&premium=true"
-            f"&device_type=mobile"
-        )
-        log(f"🔄 ScraperAPI запрос: {target_url}")
+        log(f"🔄 Запрос: {target_url}")
         try:
-            resp = requests.get(scraper_url, timeout=90)
-            log(f"📥 Status: {resp.status_code} | HTML: {len(resp.text)} символов")
+            resp = requests.get(target_url, headers=FB_HEADERS, timeout=15)
+            log(f"📥 Status: {resp.status_code} | HTML: {len(resp.content)} байт")
 
             if resp.status_code != 200:
-                log(f"⚠️  Ответ: {resp.text[:300]}")
+                log(f"⚠️  Ответ: {resp.content[:200]}")
                 continue
 
-            html = resp.text
+            html = resp.content.decode("utf-8", errors="ignore")
 
-            urls = set()
+            # Паттерн 1: /reel/ID
+            for match in re.finditer(r'/reel/(\d{10,})', html):
+                all_urls.add(f"https://www.facebook.com/reel/{match.group(1)}")
 
-            # Паттерн 1: прямые ссылки на Reels
-            for match in re.finditer(r'https://www\.facebook\.com/reel/(\d+)', html):
-                urls.add(f"https://www.facebook.com/reel/{match.group(1)}")
-
-            # Паттерн 2: мобильные ссылки на Reels
-            for match in re.finditer(r'https://m\.facebook\.com/reel/(\d+)', html):
-                urls.add(f"https://www.facebook.com/reel/{match.group(1)}")
-
-            # Паттерн 3: video_id в JSON
+            # Паттерн 2: video_id в JSON
             for match in re.finditer(r'"video_id":"(\d{10,})"', html):
-                urls.add(f"https://www.facebook.com/watch/?v={match.group(1)}")
+                all_urls.add(f"https://www.facebook.com/reel/{match.group(1)}")
 
-            # Паттерн 4: /videos/ ссылки
-            for match in re.finditer(r'href="(/[^"]+/videos/(\d+)[^"]*)"', html):
-                urls.add(f"https://www.facebook.com{match.group(1)}")
+            # Паттерн 3: /videos/ID
+            for match in re.finditer(r'/videos/(\d{10,})', html):
+                all_urls.add(f"https://www.facebook.com/reel/{match.group(1)}")
 
-            # Паттерн 5: reel в href
-            for match in re.finditer(r'href="[^"]*(/reel/(\d+))[^"]*"', html):
-                urls.add(f"https://www.facebook.com/reel/{match.group(2)}")
+            # Паттерн 4: watch/?v=ID
+            for match in re.finditer(r'watch/\?v=(\d{10,})', html):
+                all_urls.add(f"https://www.facebook.com/reel/{match.group(1)}")
 
-            log(f"🎬 Найдено Reels: {len(urls)}")
-
-            if len(urls) > 0:
-                return list(urls)
-
-            # Если 0 — логируем HTML для диагностики
-            log(f"⚠️  0 Reels. HTML начало: {html[:500]}")
+            if all_urls:
+                log(f"🎬 Найдено Reels: {len(all_urls)}")
+                return list(all_urls)
 
         except Exception as e:
-            log(f"❌ Ошибка ScraperAPI: {e}")
+            log(f"❌ Ошибка: {e}")
 
-    return []
+    if not all_urls:
+        log(f"⚠️  0 Reels найдено по всем URL")
+
+    return list(all_urls)
 
 def main():
     log("🚀 Facebook Reels бот запущен!")
