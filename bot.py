@@ -103,30 +103,32 @@ def fetch_reels():
 
             html = resp.content.decode("utf-8", errors="ignore")
 
-            # Дебаг: логируем фрагменты HTML для диагностики (только первый URL)
+            # Facebook кодирует слеши как \/ в JSON — убираем экранирование
+            html_clean = html.replace("\\\/", "/").replace("\\/", "/")
+
+            # Дебаг: логируем (только первый URL)
             if target_url == urls_to_try[0]:
-                log(f"🔍 HTML начало: {html[:500]}")
-                # Ищем любые упоминания reel/video
-                reel_mentions = [m.start() for m in re.finditer(r'reel|video|watch', html, re.IGNORECASE)]
-                log(f"🔍 Найдено слов reel/video/watch: {len(reel_mentions)}")
-                if reel_mentions:
-                    pos = reel_mentions[0]
-                    log(f"🔍 Контекст первого совпадения: ...{html[max(0,pos-50):pos+100]}...")
+                reel_mentions = re.findall(r'/reel/(\d{10,})', html_clean)
+                video_mentions = re.findall(r'/videos/(\d{10,})', html_clean)
+                videoid_mentions = re.findall(r'"video_id":"(\d{10,})"', html_clean)
+                log(f"🔍 /reel/ IDs: {reel_mentions[:5]}")
+                log(f"🔍 /videos/ IDs: {video_mentions[:5]}")
+                log(f"🔍 video_id IDs: {videoid_mentions[:5]}")
 
             # Паттерн 1: /reel/ID
-            for match in re.finditer(r'/reel/(\d{10,})', html):
+            for match in re.finditer(r'/reel/(\d{10,})', html_clean):
                 all_urls.add(f"https://www.facebook.com/reel/{match.group(1)}")
 
             # Паттерн 2: video_id в JSON
-            for match in re.finditer(r'"video_id":"(\d{10,})"', html):
+            for match in re.finditer(r'"video_id":"(\d{10,})"', html_clean):
                 all_urls.add(f"https://www.facebook.com/reel/{match.group(1)}")
 
             # Паттерн 3: /videos/ID
-            for match in re.finditer(r'/videos/(\d{10,})', html):
+            for match in re.finditer(r'/videos/(\d{10,})', html_clean):
                 all_urls.add(f"https://www.facebook.com/reel/{match.group(1)}")
 
             # Паттерн 4: watch/?v=ID
-            for match in re.finditer(r'watch/\?v=(\d{10,})', html):
+            for match in re.finditer(r'watch/\?v=(\d{10,})', html_clean):
                 all_urls.add(f"https://www.facebook.com/reel/{match.group(1)}")
 
             if all_urls:
