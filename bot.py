@@ -108,12 +108,22 @@ def fetch_reels():
 
             # Дебаг: логируем (только первый URL)
             if target_url == urls_to_try[0]:
-                reel_mentions = re.findall(r'/reel/(\d{10,})', html_clean)
-                video_mentions = re.findall(r'/videos/(\d{10,})', html_clean)
-                videoid_mentions = re.findall(r'"video_id":"(\d{10,})"', html_clean)
-                log(f"🔍 /reel/ IDs: {reel_mentions[:5]}")
-                log(f"🔍 /videos/ IDs: {video_mentions[:5]}")
-                log(f"🔍 video_id IDs: {videoid_mentions[:5]}")
+                # Ищем ВСЕ числа длиной 15+ символов (типичные FB ID)
+                big_ids = re.findall(r'(\d{15,})', html_clean)
+                unique_ids = list(set(big_ids))[:10]
+                log(f"🔍 Большие ID в HTML: {unique_ids}")
+
+                # Ищем любые упоминания reel (без привязки к формату)
+                reel_context = re.findall(r'.{0,30}reel.{0,30}', html_clean, re.IGNORECASE)
+                log(f"🔍 Контексты 'reel' ({len(reel_context)}): {reel_context[:3]}")
+
+                # Ищем video упоминания
+                video_context = re.findall(r'.{0,30}video.{0,30}', html_clean, re.IGNORECASE)
+                log(f"🔍 Контексты 'video' ({len(video_context)}): {video_context[:3]}")
+
+                # Логируем середину HTML (там обычно данные)
+                mid = len(html_clean) // 2
+                log(f"🔍 HTML середина: {html_clean[mid:mid+500]}")
 
             # Паттерн 1: /reel/ID
             for match in re.finditer(r'/reel/(\d{10,})', html_clean):
